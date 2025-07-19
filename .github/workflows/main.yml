@@ -1,0 +1,72 @@
+# This is the name of the workflow, which will be displayed in the "Actions" tab of your GitHub repository.
+name: Video Processing Workflow
+
+# This section defines how the workflow is triggered.
+# 'workflow_dispatch' allows you to run this workflow manually from the Actions tab.
+on:
+  workflow_dispatch:
+    # 'inputs' defines the parameters you can provide when running the workflow manually.
+    inputs:
+      video_url:
+        # 'description' is the label for the input field in the GitHub UI.
+        description: 'Video URL to download (must be a direct MP4 link)'
+        # 'required' means you must provide a value for this input.
+        required: true
+        # 'default' provides a sample value.
+        default: 'https://www.eporner.com/dload/GO6XvvWpg8a/720/13490524-720p.mp4'
+
+# 'jobs' defines a sequence of tasks that will be executed.
+jobs:
+  download-and-host:
+    # 'name' is the display name for the job in the GitHub UI.
+    name: Download Video and Generate Streaming Link
+    # 'runs-on' specifies the type of virtual machine to run the job on. 'ubuntu-latest' is a standard choice.
+    runs-on: ubuntu-latest
+
+    # 'steps' are the individual commands or actions that make up the job.
+    steps:
+      # Step 1: Check out the repository's code
+      # This is necessary so the runner can access any scripts or files in your repo if needed.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Download, Upload, and Generate Link
+      # This is the core logic of our workflow.
+      - name: Download and Process Video
+        id: process_video # An ID to reference the output of this step later.
+        run: |
+          # Use curl to download the video file from the URL provided in the manual trigger.
+          # The -L flag follows redirects, and -o saves the file with a specific name.
+          echo "Downloading video from ${{ github.event.inputs.video_url }}..."
+          curl -L -o video.mp4 "${{ github.event.inputs.video_url }}"
+          
+          # Check if the download was successful by seeing if the file exists and has a size greater than zero.
+          if [ -s video.mp4 ]; then
+            echo "Download complete. Uploading to temporary storage..."
+            
+            # Use curl to upload the downloaded video file to transfer.sh, a free file-sharing service.
+            # The output of this command is the direct link to the uploaded file.
+            STREAM_URL=$(curl --upload-file ./video.mp4 https://transfer.sh/video.mp4)
+            
+            echo "Upload complete."
+            echo "Your streaming link is: $STREAM_URL"
+            
+            # This is a special GitHub Actions command to set an output variable for this step.
+            # We can then use this output in subsequent steps.
+            echo "stream_url=$STREAM_URL" >> $GITHUB_OUTPUT
+          else
+            echo "Download failed or the file is empty."
+            # Exit with an error code to make the workflow fail.
+            exit 1
+          fi
+        shell: bash # Specifies that these commands should be run with bash.
+
+      # Step 3: Display the final link clearly at the end of the job
+      # This makes it easy to find the result in the workflow logs.
+      - name: Display Streaming Link
+        # This step only runs if the previous step (id: process_video) was successful.
+        if: steps.process_video.outputs.stream_url
+        run: |
+          echo "✅ Workflow Complete!"
+          echo "➡️ Your video can be streamed from the following URL:"
+          echo "${{ steps.process_video.outputs.stream_url }}"
